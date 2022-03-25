@@ -5,13 +5,6 @@ const { body, validationResult } = require("express-validator");
 const { Op } = require("sequelize");
 const _ = require("lodash");
 
-
-router.get("/users", (req, res) => {
-  db.Users.findAll({
-    attributes: { exclude: ["password"] },
-  }).then((users) => res.send(users));
-});
-
 router.post(
   "/users",
   body("username").isEmail(),
@@ -28,8 +21,6 @@ router.post(
   }
 );
 
-
-
 router.get("/users/:id(\\d+)", (req, res) => {
   db.Users.findByPk(req.params.id).then((user) => {
     if (user) {
@@ -40,31 +31,44 @@ router.get("/users/:id(\\d+)", (req, res) => {
   });
 });
 
-router.put("/users/:id", body("password").isLength({min: 7}), (req, res) => {
-   db.Users.findByPk(req.params.id).then((user) => {
+router.put(
+  "/users/:id(\\d+)",
+  body("password").isLength({ min: 7 }),
+  (req, res) => {
+    db.Users.findByPk(req.params.id).then((user) => {
       if (user) {
-         user.update({
+        user
+          .update({
             password: req.body.password,
-         }).then((user) => res.send({"message": "User updated"}));
+          })
+          .then((user) => res.send({ message: "User updated" }));
       } else {
-         res.status(404).send("User not found");
+        res.status(404).send("User not found");
       }
-   });
-})
+    });
+  }
+);
 
-router.delete("/users/:id", (req, res) => { 
-   db.Users.findByPk(req.params.id).then((user) => {
-      if (user) {
-         user.destroy().then(() => res.send({"message": "User deleted"}));
-      } else {
-         res.status(404).send("User not found");
-      }
-   });
-
+router.delete("/users/:id", (req, res) => {
+  db.Users.findByPk(req.params.id).then((user) => {
+    if (user) {
+      user.destroy().then(() => res.send({ message: "User deleted" }));
+    } else {
+      res.status(404).send("User not found");
+    }
+  });
 });
-router.get("/users/search", (req, res) => {
+
+router.get("/users", async (req, res) => {
+  const page = req.query.page || 1;
+  const limit = +req.query.limit || 5;
+
   const filter = {};
-  const findAllParams = {};
+  const findAllParams = {
+    attributes: { exclude: ["password"] },
+    offset: (page - 1) * limit,
+    limit: limit,
+  };
 
   if (req.query.username) {
     filter.username = {
@@ -76,8 +80,15 @@ router.get("/users/search", (req, res) => {
     findAllParams.where = filter;
   }
 
-  db.Users.findAll(findAllParams)
-    .then((users) => res.send(users))
-    .catch((err) => res.status(500).send(err));
+  try {
+     const result = await db.Users.findAndCountAll(findAllParams);
+     const { count } = result;
+     
+       const pages = Math.ceil(count / limit);
+     result.pages = pages
+    res.send(result);
+  } catch (err) {
+    res.status(500).send(err);
+  }
 });
 module.exports = router;
